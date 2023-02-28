@@ -1,6 +1,6 @@
 import numpy as np
 
-class MultiArmedBandits(object):
+class MultiArmedBandit(object):
     
     def __init__(self, 
                  k = 10, 
@@ -18,7 +18,7 @@ class MultiArmedBandits(object):
         self.actual_distribution_parameters = None
         
     def _initialize_actual_distribution(self):
-        self.actual_distribution_parameters = dict(zip(list(range(self.k)), [{'loc': np.random.uniform(-1,1), 'scale': np.random.uniform(0.5,3)} for _ in range(self.k)]))
+        self.actual_distribution_parameters = dict(zip(list(range(self.k)), [{'loc': np.random.uniform(-0.25,2), 'scale': np.random.uniform(2,5)} for _ in range(self.k)]))
         if not self.stationery:
             self.distribution_scaling_parameters = dict(zip(list(range(self.k)), \
                                                             [{'loc_multiplier': np.random.choice([1,-1]) + 0.005, \
@@ -84,20 +84,20 @@ class MultiArmedBandits(object):
             strategy = 'epsilon_greedy', 
             epsilon = 0.1,
             T = 1000, 
-            initial_values_method = 'optimistic', 
+            initial_values_method = 'peek_once', 
             estimation_method = 'sample_average', #can be exponential recently weighted average with constant step_size
             stepsize = None):
         
         self._initialize_actual_distribution()
         self.estimated_values = self.get_initial_values(initial_values_method)
         
-        arms_pulled_frequency = [1] * self.k
+        arms_pulled_frequency = [0] * self.k #if initial_values_method == 'zeros' else [1] * self.k 
         
         total_reward_collected = 0
-        running_average_reward = []
+        average_reward = []
         
         optimal_action_sum = 0
-        optimal_action_rate = []
+        optimal_action = []
         
         for t in range(1, T+1):
             arm_selected = self.select_arm(strategy, epsilon)
@@ -106,18 +106,19 @@ class MultiArmedBandits(object):
             if arm_selected == self.get_optimal_arm():
                 optimal_action_sum += 1
                 
-            optimal_action_rate.append(optimal_action_sum / t)
+            optimal_action.append(optimal_action_sum / t)
 
             payout = self.get_immediate_reward(arm_selected)
             total_reward_collected += payout
-            running_average_reward.append(total_reward_collected / t)
+            average_reward.append(total_reward_collected / t)
             
             if not self.stationery: self._mutate_underlying_distribution()
             if estimation_method == 'sample_average': step_size = 1 / arms_pulled_frequency[arm_selected]
             
             self.update_estimate(strategy, arm_selected, payout, step_size)
             
-        return {'running_average_reward': np.array(running_average_reward),  'optimal_action_rate': np.array(optimal_action_rate)}
+        return {'average_reward': np.array(average_reward),  \
+                'optimal_action': np.array(optimal_action)}
     
     
     def average_behavior(self, 
@@ -125,16 +126,25 @@ class MultiArmedBandits(object):
                          strategy = 'epsilon_greedy', 
                          epsilon = 0.1,
                          T = 1000, 
-                         initial_values_method = 'optimistic', 
+                         initial_values_method = 'peek_once', 
                          estimation_method = 'sample_average', #can be exponential recently weighted average with constant step_size
                          stepsize = None):
         
         
-        average_reward = np.zeros((self.k))
-        average_reward = np.zeros((self.k))
+        average_reward = np.zeros(T)
+        optimal_action = np.zeros(T)
         
-        # for n in range(N):
-        #     average_reward += 
+        for n in range(N):
+            output = self.run(strategy, epsilon, T, initial_values_method, estimation_method, stepsize)
+            average_reward += output['average_reward']
+            optimal_action += output['optimal_action']
+            
+        average_reward /= N
+        optimal_action /= N
+        
+        return {'average_reward': average_reward, 'optimal_action': optimal_action}
+            
+            
         
 
         
