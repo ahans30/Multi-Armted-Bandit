@@ -66,18 +66,21 @@ class MultiArmedBandit(object):
             choice = np.random.choice(['Explore', 'Exploit'], p = [epsilon, 1-epsilon])
             
             if choice == 'Exploit':
-                arm_selected = np.argmax(self.estimated_values)    
+                arm_selected = np.argmax(self.estimated_values)
             elif choice == 'Explore':
                 arm_selected = np.random.choice(range(0, self.k))
             
-        if strategy== 'UCB':
-            #WIP
-            arm_selected = np.argmax(self.estimated_values)
+        elif strategy== 'UCB':
+            arm_selected = np.argmax(self.ucb_score)
             
         return arm_selected
     
-    def update_estimate(self, strategy, arm_selected, payout, step_size, c = None):
-        self.estimated_values[arm_selected] = self.estimated_values[arm_selected] + step_size * (payout - self.estimated_values[arm_selected])
+    def update_estimate(self, strategy, arm_selected, payout, step_size, arms_pulled_frequency, t, c = 2):
+            self.estimated_values[arm_selected] = self.estimated_values[arm_selected] + step_size * (payout - self.estimated_values[arm_selected])
+            
+            if strategy == 'UCB':
+                self.ucb_score[arm_selected] = self.estimated_values[arm_selected] + c * ((np.log(t) / 1 + arms_pulled_frequency[arm_selected]) ** 0.5)
+            
         
             
     def run(self, 
@@ -90,6 +93,7 @@ class MultiArmedBandit(object):
         
         self._initialize_actual_distribution()
         self.estimated_values = self.get_initial_values(initial_values_method)
+        if strategy = 'UCB': self.ucb_score = self.estimated_values.copy()
         
         arms_pulled_frequency = [0] * self.k #if initial_values_method == 'zeros' else [1] * self.k 
         
@@ -115,7 +119,7 @@ class MultiArmedBandit(object):
             if not self.stationery: self._mutate_underlying_distribution()
             if estimation_method == 'sample_average': step_size = 1 / arms_pulled_frequency[arm_selected]
             
-            self.update_estimate(strategy, arm_selected, payout, step_size)
+            self.update_estimate(strategy, arm_selected, payout, step_size, arms_pulled_frequency, t)
             
         return {'average_reward': np.array(average_reward),  \
                 'optimal_action': np.array(optimal_action)}
