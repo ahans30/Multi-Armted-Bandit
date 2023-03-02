@@ -89,19 +89,23 @@ class MultiArmedBandit(object):
             T = 1000, 
             initial_values_method = 'peek_once', 
             estimation_method = 'sample_average', #can be exponential recently weighted average with constant step_size
-            stepsize = None):
+            stepsize = None,
+            c = 2):
         
         self._initialize_actual_distribution()
         self.estimated_values = self.get_initial_values(initial_values_method)
-        if strategy = 'UCB': self.ucb_score = self.estimated_values.copy()
+        if strategy == 'UCB': self.ucb_score = self.estimated_values.copy()
         
-        arms_pulled_frequency = [0] * self.k #if initial_values_method == 'zeros' else [1] * self.k 
+        arms_pulled_frequency = [1] * self.k #if initial_values_method == 'zeros' else [1] * self.k 
         
         total_reward_collected = 0
         average_reward = []
         
         optimal_action_sum = 0
         optimal_action = []
+        
+        total_regret = 0
+        regret_vector = []
         
         for t in range(1, T+1):
             arm_selected = self.select_arm(strategy, epsilon)
@@ -119,10 +123,14 @@ class MultiArmedBandit(object):
             if not self.stationery: self._mutate_underlying_distribution()
             if estimation_method == 'sample_average': step_size = 1 / arms_pulled_frequency[arm_selected]
             
-            self.update_estimate(strategy, arm_selected, payout, step_size, arms_pulled_frequency, t)
+            self.update_estimate(strategy, arm_selected, payout, step_size, arms_pulled_frequency, t, c)
+            
+            total_regret += self.actual_distribution_parameters[self.get_optimal_arm()]['loc'] - self.estimated_values[arm_selected]
+            regret_vector.append(total_regret)
             
         return {'average_reward': np.array(average_reward),  \
-                'optimal_action': np.array(optimal_action)}
+                'optimal_action': np.array(optimal_action),
+                'total_regret': np.array(regret_vector)}
     
     
     def average_behavior(self, 
@@ -137,16 +145,19 @@ class MultiArmedBandit(object):
         
         average_reward = np.zeros(T)
         optimal_action = np.zeros(T)
+        total_regret = np.zeros(T)
         
         for n in range(N):
             output = self.run(strategy, epsilon, T, initial_values_method, estimation_method, stepsize)
             average_reward += output['average_reward']
             optimal_action += output['optimal_action']
+            total_regret += output['total_regret']
             
         average_reward /= N
         optimal_action /= N
+        total_regret /= N
         
-        return {'average_reward': average_reward, 'optimal_action': optimal_action}
+        return {'average_reward': average_reward, 'optimal_action': optimal_action, 'total_regret': total_regret}
             
             
         
