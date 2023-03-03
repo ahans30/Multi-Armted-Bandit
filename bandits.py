@@ -17,8 +17,22 @@ class MultiArmedBandit(object):
         self.stationery = stationery
         self.actual_distribution_parameters = None
         
-    def _initialize_actual_distribution(self):
-        self.actual_distribution_parameters = dict(zip(list(range(self.k)), [{'loc': np.random.uniform(-0.25,2), 'scale': np.random.uniform(2,5)} for _ in range(self.k)]))
+        self.average_metrics = None
+        self.name = None
+        
+    def __str__(self):
+        return self.name
+        
+    def _initialize_actual_distribution(self, mean_range = None, sd_range = None):
+        
+        if mean_range is None: mean_range = (-0.25, 2)
+        if sd_range is None: sd_range = (2, 5)
+        
+        arms = list(range(self.k))
+        parameters = [{'loc': np.random.uniform(mean_range[0], mean_range[1]), 'scale': np.random.uniform(sd_range[0], sd_range[1])} for _ in range(self.k)]
+        
+        self.actual_distribution_parameters = dict(zip(arms, parameters))
+        
         if not self.stationery:
             self.distribution_scaling_parameters = dict(zip(list(range(self.k)), \
                                                             [{'loc_multiplier': np.random.choice([1,-1]) + 0.005, \
@@ -79,7 +93,7 @@ class MultiArmedBandit(object):
             self.estimated_values[arm_selected] = self.estimated_values[arm_selected] + step_size * (payout - self.estimated_values[arm_selected])
             
             if strategy == 'UCB':
-                self.ucb_score[arm_selected] = self.estimated_values[arm_selected] + c * ((np.log(t) / 1 + arms_pulled_frequency[arm_selected]) ** 0.5)
+                self.ucb_score[arm_selected] = self.estimated_values[arm_selected] + c * ((np.log(t) / (1e-5 + arms_pulled_frequency[arm_selected])) ** 0.5)
             
         
             
@@ -90,9 +104,11 @@ class MultiArmedBandit(object):
             initial_values_method = 'peek_once', 
             estimation_method = 'sample_average', #can be exponential recently weighted average with constant step_size
             stepsize = None,
-            c = 2):
+            c = 2,
+            mean_range = None,
+            sd_range = None):
         
-        self._initialize_actual_distribution()
+        self._initialize_actual_distribution(mean_range, sd_range)
         self.estimated_values = self.get_initial_values(initial_values_method)
         if strategy == 'UCB': self.ucb_score = self.estimated_values.copy()
         
@@ -132,23 +148,27 @@ class MultiArmedBandit(object):
                 'optimal_action': np.array(optimal_action),
                 'total_regret': np.array(regret_vector)}
     
-    
-    def average_behavior(self, 
+    def average_behavior(self,
+                         name,
                          N = 100,
                          strategy = 'epsilon_greedy', 
                          epsilon = 0.1,
                          T = 1000, 
                          initial_values_method = 'peek_once', 
                          estimation_method = 'sample_average', #can be exponential recently weighted average with constant step_size
-                         stepsize = None):
+                         stepsize = None,
+                         c = 2,
+                         mean_range = None,
+                         sd_range = None):
         
+        self.name = name
         
         average_reward = np.zeros(T)
         optimal_action = np.zeros(T)
         total_regret = np.zeros(T)
         
         for n in range(N):
-            output = self.run(strategy, epsilon, T, initial_values_method, estimation_method, stepsize)
+            output = self.run(strategy, epsilon, T, initial_values_method, estimation_method, stepsize, c, mean_range, sd_range)
             average_reward += output['average_reward']
             optimal_action += output['optimal_action']
             total_regret += output['total_regret']
@@ -157,7 +177,9 @@ class MultiArmedBandit(object):
         optimal_action /= N
         total_regret /= N
         
-        return {'average_reward': average_reward, 'optimal_action': optimal_action, 'total_regret': total_regret}
+        self.average_metrics = {'name': name, 'average_reward': average_reward, 'optimal_action': optimal_action, 'total_regret': total_regret}
+        
+        return self.average_metrics
             
             
         
