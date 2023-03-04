@@ -23,13 +23,14 @@ class MultiArmedBandit(object):
     def __str__(self):
         return self.name
         
-    def _initialize_actual_distribution(self, mean_range = None, sd_range = None):
+    def _initialize_actual_distribution(self, reward_expected_params = None, reward_std_params = None):
         
-        if mean_range is None: mean_range = (-0.25, 2)
-        if sd_range is None: sd_range = (2, 5)
+        # if reward_expected_params is None: reward_expected_params = (-0.25, 2)
+        # if reward_std_params is None: reward_std_params = (2, 5)
         
         arms = list(range(self.k))
-        parameters = [{'loc': np.random.uniform(mean_range[0], mean_range[1]), 'scale': np.random.uniform(sd_range[0], sd_range[1])} for _ in range(self.k)]
+        parameters = [{'loc': np.random.normal(reward_expected_params[0], reward_expected_params[1]), 
+                       'scale': np.random.uniform(reward_std_params[0], reward_std_params[1])} for _ in range(self.k)]
         
         self.actual_distribution_parameters = dict(zip(arms, parameters))
         
@@ -66,7 +67,7 @@ class MultiArmedBandit(object):
             
     def get_initial_values(self, method):
         if method == 'zeros':
-            return np.array([0] * self.k)
+            return np.array([1e-5] * self.k)
         elif method == 'optimistic':
             return np.array([5] * self.k)
         elif method == 'peek_once':
@@ -89,8 +90,8 @@ class MultiArmedBandit(object):
             
         return arm_selected
     
-    def update_estimate(self, strategy, arm_selected, payout, step_size, arms_pulled_frequency, t, c = 2):
-            self.estimated_values[arm_selected] = self.estimated_values[arm_selected] + step_size * (payout - self.estimated_values[arm_selected])
+    def update_estimate(self, strategy, arm_selected, payout, stepsize, arms_pulled_frequency, t, c = 2):
+            self.estimated_values[arm_selected] = self.estimated_values[arm_selected] + stepsize * (payout - self.estimated_values[arm_selected])
             
             if strategy == 'UCB':
                 self.ucb_score[arm_selected] = self.estimated_values[arm_selected] + c * ((np.log(t) / (1e-5 + arms_pulled_frequency[arm_selected])) ** 0.5)
@@ -105,14 +106,14 @@ class MultiArmedBandit(object):
             estimation_method = 'sample_average', #can be exponential recently weighted average with constant step_size
             stepsize = None,
             c = 2,
-            mean_range = None,
-            sd_range = None):
+            reward_expected_params = None,
+            reward_std_params = None):
         
-        self._initialize_actual_distribution(mean_range, sd_range)
+        self._initialize_actual_distribution(reward_expected_params, reward_std_params)
         self.estimated_values = self.get_initial_values(initial_values_method)
         if strategy == 'UCB': self.ucb_score = self.estimated_values.copy()
         
-        arms_pulled_frequency = [1] * self.k #if initial_values_method == 'zeros' else [1] * self.k 
+        arms_pulled_frequency = [0] * self.k #if initial_values_method == 'zeros' else [1] * self.k 
         
         total_reward_collected = 0
         average_reward = []
@@ -137,11 +138,11 @@ class MultiArmedBandit(object):
             average_reward.append(total_reward_collected / t)
             
             if not self.stationery: self._mutate_underlying_distribution()
-            if estimation_method == 'sample_average': step_size = 1 / arms_pulled_frequency[arm_selected]
+            if estimation_method == 'sample_average': stepsize = 1 / arms_pulled_frequency[arm_selected]
             
-            self.update_estimate(strategy, arm_selected, payout, step_size, arms_pulled_frequency, t, c)
+            self.update_estimate(strategy, arm_selected, payout, stepsize, arms_pulled_frequency, t, c)
             
-            total_regret += self.actual_distribution_parameters[self.get_optimal_arm()]['loc'] - self.estimated_values[arm_selected]
+            total_regret += self.get_immediate_reward(self.get_optimal_arm()) - payout
             regret_vector.append(total_regret)
             
         return {'average_reward': np.array(average_reward),  \
@@ -155,11 +156,11 @@ class MultiArmedBandit(object):
                          epsilon = 0.1,
                          T = 1000, 
                          initial_values_method = 'peek_once', 
-                         estimation_method = 'sample_average', #can be exponential recently weighted average with constant step_size
+                         estimation_method = 'sample_average', #can be exponential recently weighted average with constant stepsize
                          stepsize = None,
                          c = 2,
-                         mean_range = None,
-                         sd_range = None):
+                         reward_expected_params = None,
+                         reward_std_params = None):
         
         self.name = name
         
@@ -168,7 +169,7 @@ class MultiArmedBandit(object):
         total_regret = np.zeros(T)
         
         for n in range(N):
-            output = self.run(strategy, epsilon, T, initial_values_method, estimation_method, stepsize, c, mean_range, sd_range)
+            output = self.run(strategy, epsilon, T, initial_values_method, estimation_method, stepsize, c, reward_expected_params, reward_std_params)
             average_reward += output['average_reward']
             optimal_action += output['optimal_action']
             total_regret += output['total_regret']
